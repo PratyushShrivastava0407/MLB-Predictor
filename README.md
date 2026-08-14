@@ -51,14 +51,15 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
      with a small pseudo-count (kappa=15 PA) — shown separately, not hidden.
 5. **Output** — full ranking of every batter in both lineups against the
    opposing starter (combined into one pool, since either lineup is bettable
-   in "today's game"), then up to 3 **recommended** picks: not just the top 3
-   by rank, but the top-ranked picks that clear a **meaningful edge**, scaled
-   by confidence (`edge >= +3.0pts` High / `+5.0pts` Medium / `+8.0pts` Low —
-   see `mlb.model.MIN_EDGE_BY_CONFIDENCE`). A pick that's technically #2 or #3
-   by probability but only +0.5pts over breakeven is statistical noise, not a
-   recommendation, and is now excluded rather than padded in to fill 3 slots.
-   If fewer than 3 (including zero) clear the bar, the report says so
-   explicitly and shows only what actually qualifies.
+   in "today's game"), then **every** pick that clears a **meaningful edge**,
+   scaled by confidence (`edge >= +3.0pts` High / `+5.0pts` Medium / `+8.0pts`
+   Low — see `mlb.model.MIN_EDGE_BY_CONFIDENCE`). This list is not capped at
+   3 and not padded to 3 -- a game can surface 0, 1, 4, or however many
+   batters genuinely clear the bar. A pick at only +0.5pts over breakeven is
+   statistical noise, not a recommendation, and is excluded regardless of
+   where it ranks; a 4th or 5th batter with a real edge is included even
+   though it isn't top-3 by raw rank. If nothing clears the bar, the report
+   says so explicitly and tells you to pass on the game.
 
 ## Design choices / limitations (read before betting on this)
 

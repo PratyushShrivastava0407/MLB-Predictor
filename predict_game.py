@@ -201,15 +201,14 @@ def print_report(args, game, results, league_p0):
         print(f"{i:<3}{r.batter_name:<24}{r.team_abbr:<5}{r.pitcher_name:<20}{r.probability*100:>7.1f}%{edge_str:>8}{r.confidence:>8}  {mark}")
 
     print("\n" + "=" * W)
-    print(" RECOMMENDED -- picks that clear a real edge, not just the top of the ranking")
+    print(" RECOMMENDED -- every pick that clears a real edge (no cap, no coin-flip padding)")
     print(f" Bar: edge >= +3.0pts (High conf) / +5.0pts (Medium) / +8.0pts (Low) -- thin-sample")
     print(f" picks need a bigger observed edge before they're distinguishable from a coin flip.")
     print("=" * W)
 
     qualifying = [(r, b) for r, b in results if mdl.clears_meaningful_edge(r.edge, r.confidence)]
-    shown = qualifying[:3]
 
-    if not shown:
+    if not qualifying:
         print(f"\nNo batter in this game clears a meaningful edge over the {mdl.BREAKEVEN*100:.1f}% breakeven.")
         best = results[0][0] if results else None
         if best is not None:
@@ -219,7 +218,7 @@ def print_report(args, game, results, league_p0):
         print()
         return
 
-    for i, (r, bullets) in enumerate(shown, 1):
+    for i, (r, bullets) in enumerate(qualifying, 1):
         print(f"\n{i}. {r.batter_name} ({r.team_abbr}) vs {r.pitcher_name}  --  batting {ordinal(r.order)}")
         print(f"   Estimated P(4+ pitches): {r.probability*100:.1f}%   "
               f"Breakeven needed: {mdl.BREAKEVEN*100:.1f}%   "
@@ -233,15 +232,8 @@ def print_report(args, game, results, league_p0):
             print(f"     - BvP history: no meaningful head-to-head sample (0 PA)")
 
     print()
-    if len(qualifying) < 3:
-        excluded_count = min(3, len(results)) - len(shown)
-        print(f"Only {len(shown)} pick(s) in this game clear a real edge -- not padding to 3 with coin-flips.")
-        if excluded_count > 0:
-            print(f"({excluded_count} more were technically in the top 3 by rank but too thin an edge to act on; "
-                  f"see the '*' column in the full ranking above.)")
-    else:
-        print(f"{len(shown)} picks shown clear a real edge over the {mdl.BREAKEVEN*100:.1f}% breakeven "
-              f"at meaningful margins for their confidence level.")
+    print(f"{len(qualifying)} pick(s) in this game clear a real edge over the {mdl.BREAKEVEN*100:.1f}% breakeven "
+          f"at a meaningful margin for their confidence level -- every one of them, not just the top 3.")
     print()
 
 
