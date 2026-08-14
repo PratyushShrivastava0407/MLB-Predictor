@@ -51,10 +51,14 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
      with a small pseudo-count (kappa=15 PA) — shown separately, not hidden.
 5. **Output** — full ranking of every batter in both lineups against the
    opposing starter (combined into one pool, since either lineup is bettable
-   in "today's game"), then the top 3 with estimated probability, the 62.5%
-   breakeven for comparison, the 2-3 stats driving the ranking, BvP history,
-   and a confidence flag. If none of the top 3 clear 62.5%, the report says
-   so explicitly instead of dressing them up.
+   in "today's game"), then up to 3 **recommended** picks: not just the top 3
+   by rank, but the top-ranked picks that clear a **meaningful edge**, scaled
+   by confidence (`edge >= +3.0pts` High / `+5.0pts` Medium / `+8.0pts` Low —
+   see `mlb.model.MIN_EDGE_BY_CONFIDENCE`). A pick that's technically #2 or #3
+   by probability but only +0.5pts over breakeven is statistical noise, not a
+   recommendation, and is now excluded rather than padded in to fill 3 slots.
+   If fewer than 3 (including zero) clear the bar, the report says so
+   explicitly and shows only what actually qualifies.
 
 ## Design choices / limitations (read before betting on this)
 

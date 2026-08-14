@@ -191,20 +191,35 @@ def print_report(args, game, results, league_p0):
     print("=" * W)
 
     print("\nFULL RANKING (all batters, both lineups, vs the opposing starter)\n")
-    header = f"{'#':<3}{'Batter':<24}{'Tm':<5}{'vs':<20}{'P(4+)':>8}{'Edge':>8}{'Conf':>8}"
+    print(" '*' = clears the meaningful-edge bar below (a real recommendation, not just a rank)")
+    header = f"{'#':<3}{'Batter':<24}{'Tm':<5}{'vs':<20}{'P(4+)':>8}{'Edge':>8}{'Conf':>8}  "
     print(header)
     print("-" * len(header))
     for i, (r, _) in enumerate(results, 1):
         edge_str = f"{r.edge*100:+.1f}%"
-        print(f"{i:<3}{r.batter_name:<24}{r.team_abbr:<5}{r.pitcher_name:<20}{r.probability*100:>7.1f}%{edge_str:>8}{r.confidence:>8}")
+        mark = "*" if mdl.clears_meaningful_edge(r.edge, r.confidence) else ""
+        print(f"{i:<3}{r.batter_name:<24}{r.team_abbr:<5}{r.pitcher_name:<20}{r.probability*100:>7.1f}%{edge_str:>8}{r.confidence:>8}  {mark}")
 
     print("\n" + "=" * W)
-    print(" TOP 3 -- best 'over 3.5 pitches' candidates in this game")
+    print(" RECOMMENDED -- picks that clear a real edge, not just the top of the ranking")
+    print(f" Bar: edge >= +3.0pts (High conf) / +5.0pts (Medium) / +8.0pts (Low) -- thin-sample")
+    print(f" picks need a bigger observed edge before they're distinguishable from a coin flip.")
     print("=" * W)
 
-    top3 = results[:3]
-    any_clear = any(r.probability > mdl.BREAKEVEN for r, _ in top3)
-    for i, (r, bullets) in enumerate(top3, 1):
+    qualifying = [(r, b) for r, b in results if mdl.clears_meaningful_edge(r.edge, r.confidence)]
+    shown = qualifying[:3]
+
+    if not shown:
+        print(f"\nNo batter in this game clears a meaningful edge over the {mdl.BREAKEVEN*100:.1f}% breakeven.")
+        best = results[0][0] if results else None
+        if best is not None:
+            print(f"Closest was {best.batter_name} at {best.probability*100:.1f}% ({best.edge*100:+.1f} pts, "
+                  f"{best.confidence} confidence) -- not enough margin to call it a real edge.")
+        print("Treat this game as a pass on the 'over 3.5 pitches' side.")
+        print()
+        return
+
+    for i, (r, bullets) in enumerate(shown, 1):
         print(f"\n{i}. {r.batter_name} ({r.team_abbr}) vs {r.pitcher_name}  --  batting {ordinal(r.order)}")
         print(f"   Estimated P(4+ pitches): {r.probability*100:.1f}%   "
               f"Breakeven needed: {mdl.BREAKEVEN*100:.1f}%   "
@@ -216,18 +231,17 @@ def print_report(args, game, results, league_p0):
                   f"{fmt.pct(r.bvp_rate)} went 4+ (small sample, lightly weighted into the estimate above)")
         else:
             print(f"     - BvP history: no meaningful head-to-head sample (0 PA)")
-        if r.confidence == "Low":
-            print(f"     - LOW CONFIDENCE: thin sample (pitcher starts={r.pitcher_start_n}, "
-                  f"batter-vs-hand PA={r.batter_hand_n}) -- treat this estimate with caution")
 
     print()
-    if not any_clear:
-        print(f"NONE of the top 3 clear the {mdl.BREAKEVEN*100:.1f}% breakeven implied by 1.6x odds.")
-        print("Based on this model, there is no clear edge on the 'over 3.5 pitches' side for this game today.")
+    if len(qualifying) < 3:
+        excluded_count = min(3, len(results)) - len(shown)
+        print(f"Only {len(shown)} pick(s) in this game clear a real edge -- not padding to 3 with coin-flips.")
+        if excluded_count > 0:
+            print(f"({excluded_count} more were technically in the top 3 by rank but too thin an edge to act on; "
+                  f"see the '*' column in the full ranking above.)")
     else:
-        cleared = [r for r, _ in top3 if r.probability > mdl.BREAKEVEN]
-        print(f"{len(cleared)} of the top 3 clear the {mdl.BREAKEVEN*100:.1f}% breakeven -- "
-              f"the rest do not represent value at 1.6x even though they're the best options available.")
+        print(f"{len(shown)} picks shown clear a real edge over the {mdl.BREAKEVEN*100:.1f}% breakeven "
+              f"at meaningful margins for their confidence level.")
     print()
 
 

@@ -153,6 +153,23 @@ def confidence_label(batter_hand_n: int, pitcher_start_n: int) -> str:
     return "High"
 
 
+# A pick only counts as a real recommendation if its edge over breakeven is
+# large enough to plausibly survive the model's own estimation noise. The bar
+# rises as confidence drops: a "Low" pick is built on a thin sample (wide
+# standard error), so the same nominal edge as a "High" pick is much less
+# likely to be real signal rather than noise. Rough justification -- with
+# n≈250-500 PA (typical Medium/High samples), the binomial standard error on
+# a rate near 55-65% is ~3-4 points, so a <3pt edge is well within noise for
+# even a decent sample, and worse for a thin one. These thresholds are a
+# heuristic, not a fitted calibration -- but "some margin, more for less
+# data" beats treating every top-3 slot as automatically bet-worthy.
+MIN_EDGE_BY_CONFIDENCE = {"High": 0.03, "Medium": 0.05, "Low": 0.08}
+
+
+def clears_meaningful_edge(edge: float, confidence: str) -> bool:
+    return edge >= MIN_EDGE_BY_CONFIDENCE.get(confidence, 0.08)
+
+
 @dataclass
 class MatchupResult:
     batter_name: str
