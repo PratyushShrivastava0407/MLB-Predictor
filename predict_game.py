@@ -226,13 +226,13 @@ def print_report(args, game, results, league_p0):
 
     print("\nFULL RANKING (all batters, both lineups, vs the opposing starter)\n")
     print(" '*' = clears the meaningful-edge bar below (a real recommendation, not just a rank)")
-    header = f"{'#':<3}{'Batter':<24}{'Tm':<5}{'vs':<20}{'P(4+)':>8}{'Edge':>8}{'Conf':>8}  "
+    header = f"{'#':<3}{'Batter':<24}{'Tm':<5}{'Ord':<5}{'vs':<20}{'P(4+)':>8}{'Edge':>8}{'Conf':>8}  "
     print(header)
     print("-" * len(header))
     for i, (r, _) in enumerate(results, 1):
         edge_str = f"{r.edge*100:+.1f}%"
         mark = "*" if mdl.clears_meaningful_edge(r.edge, r.confidence) else ""
-        print(f"{i:<3}{r.batter_name:<24}{r.team_abbr:<5}{r.pitcher_name:<20}{r.probability*100:>7.1f}%{edge_str:>8}{r.confidence:>8}  {mark}")
+        print(f"{i:<3}{r.batter_name:<24}{r.team_abbr:<5}{ordinal(r.order):<5}{r.pitcher_name:<20}{r.probability*100:>7.1f}%{edge_str:>8}{r.confidence:>8}  {mark}")
 
     print("\n" + "=" * W)
     print(" RECOMMENDED -- every pick that clears a real edge (no cap, no coin-flip padding)")
