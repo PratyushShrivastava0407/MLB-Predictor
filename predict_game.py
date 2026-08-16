@@ -44,15 +44,27 @@ def parse_args():
     p.add_argument("--workers", type=int, default=6, help="Parallel data-pull threads (default 6)")
     p.add_argument("--no-log", action="store_true",
                     help="Don't append recommended picks to results/predictions_log.jsonl")
+    p.add_argument("--pa-mode", choices=["first", "all"], default="first",
+                    help="'first' (default): condition on the batter's first PA of the game / "
+                         "pitcher's first time through the order -- the times-through-the-order "
+                         "effect means later PAs behave differently, and most single-PA props "
+                         "resolve on a batter's first look. 'all': blend every PA together "
+                         "(the tool's original behavior).")
     return p.parse_args()
 
 
-def load_player_profile(player_id: int, role: str, as_of_date: str, current_season: int):
-    pitch_df = sd.pull_pitcher(player_id, as_of_date) if role == "pitcher" else sd.pull_batter(player_id, as_of_date)
-    windows, pa, eligible_pks = mx.get_all_windows(pitch_df, role, current_season)
+def load_player_profile(player_id: int, role: str, as_of_date: str, current_season: int, pa_mode: str):
+    raw_df = sd.pull_pitcher(player_id, as_of_date) if role == "pitcher" else sd.pull_batter(player_id, as_of_date)
+    if pa_mode == "first":
+        raw_pa = mx.build_pa_table(raw_df)
+        working_df, _ = mx.filter_first_pa(raw_df, raw_pa, role)
+    else:
+        working_df = raw_df
+    windows, pa, eligible_pks = mx.get_all_windows(working_df, role, current_season)
     start_n = len(eligible_pks) if role == "pitcher" else None
     return {
-        "pitch_df": pitch_df,
+        "pitch_df": working_df,  # pa-mode-filtered: used for windows + hand splits, kept consistent
+        "raw_pitch_df": raw_df,  # always unfiltered: used for BvP, which needs every scrap of sample
         "pa": pa,
         "windows": windows,
         "start_n": start_n,
@@ -108,10 +120,10 @@ def main():
     print("Pulling Statcast histories (cached same-day; first run of the day may take a few minutes) ...")
     jobs = {}
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        jobs[ex.submit(load_player_profile, pitcher1.id, "pitcher", args.date, current_season)] = ("pitcher", pitcher1.id)
-        jobs[ex.submit(load_player_profile, pitcher2.id, "pitcher", args.date, current_season)] = ("pitcher", pitcher2.id)
+        jobs[ex.submit(load_player_profile, pitcher1.id, "pitcher", args.date, current_season, args.pa_mode)] = ("pitcher", pitcher1.id)
+        jobs[ex.submit(load_player_profile, pitcher2.id, "pitcher", args.date, current_season, args.pa_mode)] = ("pitcher", pitcher2.id)
         for slot in lineup1 + lineup2:
-            jobs[ex.submit(load_player_profile, slot.player.id, "batter", args.date, current_season)] = ("batter", slot.player.id)
+            jobs[ex.submit(load_player_profile, slot.player.id, "batter", args.date, current_season, args.pa_mode)] = ("batter", slot.player.id)
 
         profiles = {}
         for fut in as_completed(jobs):
@@ -163,7 +175,10 @@ def main():
             batter_side = slot.player.bats or "R"
             pitcher_hand_split = mx.get_hand_split(pp["pitch_df"], pp["pa"], "pitcher", batter_side)
             batter_hand_split = mx.get_hand_split(bp["pitch_df"], bp["pa"], "batter", pitcher.throws or "R")
-            bvp = mx.get_bvp(bp["pitch_df"], pitcher.id)
+            # BvP always draws from the unfiltered history -- these samples are already tiny
+            # (often 0-15 PA), and further restricting to "first PA of the game against this
+            # exact pitcher" would leave almost nothing to work with.
+            bvp = mx.get_bvp(bp["raw_pitch_df"], pitcher.id)
             hand_base = get_hand_baseline(batter_side, pitcher.throws or "R")
 
             res = mdl.evaluate_matchup(
@@ -200,6 +215,11 @@ def print_report(args, game, results, league_p0):
     print("=" * W)
     print(f" {args.team1.upper()} @ {args.team2.upper()} / {args.pitcher1} vs {args.pitcher2}  --  {args.date}")
     print(f" Market: PA over 3.5 pitches @ 1.6x  |  Breakeven implied probability: {mdl.BREAKEVEN*100:.1f}%")
+    mode_note = (
+        "batter's 1st PA of game / pitcher's 1st time through order"
+        if args.pa_mode == "first" else "all PA blended together"
+    )
+    print(f" PA mode: {args.pa_mode} ({mode_note})")
     print("=" * W)
 
     print("\nFULL RANKING (all batters, both lineups, vs the opposing starter)\n")
@@ -221,7 +241,9 @@ def print_report(args, game, results, league_p0):
     qualifying = [(r, b) for r, b in results if mdl.clears_meaningful_edge(r.edge, r.confidence)]
 
     if not getattr(args, "no_log", False):
-        n_logged = results_log.log_picks(game.game_pk, args.date, args.team1.upper(), args.team2.upper(), qualifying)
+        n_logged = results_log.log_picks(
+            game.game_pk, args.date, args.team1.upper(), args.team2.upper(), qualifying, pa_mode=args.pa_mode
+        )
         if n_logged:
             print(f"\n(logged {n_logged} pick(s) to results/predictions_log.jsonl for later resolution)")
 

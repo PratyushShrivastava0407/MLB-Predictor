@@ -110,28 +110,44 @@ def print_summary(entries: list[dict]) -> None:
     print(" SUMMARY -- resolved picks")
     print("=" * 70)
 
+    def aligned_hit(e: dict) -> float:
+        """Judge each pick against the outcome its own pa_mode actually targeted --
+        a 'first' pick vs its first-PA result, an 'all' pick vs its blended all-PA rate."""
+        if e.get("pa_mode", "all") == "first":
+            return 1.0 if e["actual_first_pa_over"] else 0.0
+        total = e["actual_all_pa_total"] or 0
+        return (e["actual_all_pa_over_count"] or 0) / total if total else 0.0
+
     def bucket_stats(rows, label_fn):
-        buckets = defaultdict(lambda: {"n": 0, "first_pa_over": 0, "all_pa_over": 0, "all_pa_total": 0})
+        buckets = defaultdict(lambda: {"n": 0, "first_pa_over": 0, "all_pa_over": 0, "all_pa_total": 0, "aligned_hits": 0.0})
         for e in rows:
-            key = label_fn(e)
-            b = buckets[key]
+            b = buckets[label_fn(e)]
             b["n"] += 1
             b["first_pa_over"] += 1 if e["actual_first_pa_over"] else 0
             b["all_pa_over"] += e["actual_all_pa_over_count"] or 0
             b["all_pa_total"] += e["actual_all_pa_total"] or 0
+            b["aligned_hits"] += aligned_hit(e)
         return buckets
 
     print("\nBy confidence tier:")
     for conf, b in sorted(bucket_stats(resolved, lambda e: e["confidence"]).items()):
         fp_rate = b["first_pa_over"] / b["n"] * 100 if b["n"] else 0
         ap_rate = b["all_pa_over"] / b["all_pa_total"] * 100 if b["all_pa_total"] else 0
-        print(f"  {conf:<8} n={b['n']:<4} first-PA over: {b['first_pa_over']}/{b['n']} ({fp_rate:.1f}%)   "
-              f"all-PA over: {b['all_pa_over']}/{b['all_pa_total']} ({ap_rate:.1f}%)")
+        aligned_rate = b["aligned_hits"] / b["n"] * 100 if b["n"] else 0
+        print(f"  {conf:<8} n={b['n']:<4} aligned hit rate: {aligned_rate:.1f}%   "
+              f"(first-PA: {b['first_pa_over']}/{b['n']} [{fp_rate:.1f}%]   "
+              f"all-PA: {b['all_pa_over']}/{b['all_pa_total']} [{ap_rate:.1f}%])")
+
+    print("\nBy PA mode:")
+    for mode, b in sorted(bucket_stats(resolved, lambda e: e.get("pa_mode", "all")).items()):
+        aligned_rate = b["aligned_hits"] / b["n"] * 100 if b["n"] else 0
+        print(f"  {mode:<8} n={b['n']:<4} aligned hit rate: {aligned_rate:.1f}%")
 
     avg_pred = sum(e["predicted_probability"] for e in resolved) / len(resolved)
-    fp_hits = sum(1 for e in resolved if e["actual_first_pa_over"])
+    total_aligned = sum(aligned_hit(e) for e in resolved)
     print(f"\nOverall: n={len(resolved)}   avg predicted P(4+)={avg_pred*100:.1f}%   "
-          f"first-PA actual hit rate={fp_hits}/{len(resolved)} ({fp_hits/len(resolved)*100:.1f}%)")
+          f"aligned hit rate={total_aligned/len(resolved)*100:.1f}% "
+          f"(each pick judged against the outcome its own pa_mode targeted)")
 
 
 if __name__ == "__main__":

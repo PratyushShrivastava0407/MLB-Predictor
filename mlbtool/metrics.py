@@ -58,25 +58,61 @@ def build_pa_table(pitch_df: pd.DataFrame) -> pd.DataFrame:
         s = s.dropna()
         return s.iloc[-1] if len(s) else None
 
-    pa = (
-        df.groupby(["game_pk", "at_bat_number"])
-        .agg(
-            game_date=("game_date", "first"),
-            game_year=("game_year", "first"),
-            batter=("batter", "first"),
-            pitcher=("pitcher", "first"),
-            stand=("stand", "first"),
-            p_throws=("p_throws", "first"),
-            n_pitches=("pitch_number", "max"),
-            events=("events", last_event),
-        )
-        .reset_index()
+    agg_spec = dict(
+        game_date=("game_date", "first"),
+        game_year=("game_year", "first"),
+        batter=("batter", "first"),
+        pitcher=("pitcher", "first"),
+        stand=("stand", "first"),
+        p_throws=("p_throws", "first"),
+        n_pitches=("pitch_number", "max"),
+        events=("events", last_event),
     )
+    # Times-through-the-order info, when Statcast provides it (it does for any pull
+    # from a reasonably recent season) -- used to isolate "batter's first PA of the
+    # game" / "pitcher's first time through the lineup" from later, different-regime
+    # PAs. Optional so a pull missing these columns degrades gracefully instead of
+    # crashing.
+    if "n_priorpa_thisgame_player_at_bat" in df.columns:
+        agg_spec["prior_pa_this_game"] = ("n_priorpa_thisgame_player_at_bat", "first")
+    if "n_thruorder_pitcher" in df.columns:
+        agg_spec["times_thru_order"] = ("n_thruorder_pitcher", "first")
+
+    pa = df.groupby(["game_pk", "at_bat_number"]).agg(**agg_spec).reset_index()
     pa["four_plus"] = pa["n_pitches"] >= 4
     pa["bb"] = pa["events"].isin(BB_EVENTS)
     pa["k"] = pa["events"].isin(K_EVENTS)
     pa["game_date"] = pd.to_datetime(pa["game_date"])
+    if "prior_pa_this_game" in pa.columns:
+        pa["pa_num_this_game"] = pa["prior_pa_this_game"] + 1  # 1-indexed: 1 = first PA of the game
     return pa
+
+
+def filter_first_pa(pitch_df: pd.DataFrame, pa: pd.DataFrame, role: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Restrict to the 'first time through' regime: for a batter, their first PA of
+    each game; for a pitcher, PAs against his first time through the lineup that
+    game. These aren't quite the same slice (a pitcher's first-time-through-order
+    window covers ~3-4 batters, a batter's first-PA window is exactly 1 PA/game),
+    but each isolates the same real effect from its own side of the matchup --
+    performance in the 1st, 2nd, 3rd meeting of a game differs (the well-documented
+    "times through the order" effect), and blending all of it together, as the
+    'all PA' mode does, mixes regimes that don't behave identically.
+    """
+    if pa.empty:
+        return pitch_df, pa
+    if role == "batter":
+        if "pa_num_this_game" not in pa.columns:
+            return pitch_df, pa  # column unavailable -- fall back to unfiltered
+        keep = pa[pa["pa_num_this_game"] == 1]
+    else:
+        if "times_thru_order" not in pa.columns:
+            return pitch_df, pa
+        keep = pa[pa["times_thru_order"] == 1]
+    keep_keys = set(zip(keep["game_pk"], keep["at_bat_number"]))
+    pitch_index = pd.MultiIndex.from_arrays([pitch_df["game_pk"], pitch_df["at_bat_number"]])
+    pitch_keep = pitch_df[pitch_index.isin(keep_keys)]
+    return pitch_keep, keep.reset_index(drop=True)
 
 
 def determine_start_game_pks(pitch_df: pd.DataFrame, pa: pd.DataFrame) -> set:

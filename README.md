@@ -104,6 +104,26 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
   thousands of PA per player, and matchup-specific (BvP) samples are almost
   always too small to lean on alone.
 
+## Times-through-the-order (`--pa-mode`)
+
+By default (`--pa-mode first`), every stat in this tool is computed only from
+a batter's **first PA of the game** and a pitcher's **first time through the
+lineup** -- not blended with 2nd/3rd/4th-trip PAs. This matters because of
+the well-documented times-through-the-order effect (hitters and pitchers
+behave differently the more times they face each other in one game), and
+because most single-PA pitch-count props resolve on a batter's first look at
+the pitcher, not some blend across the whole game. Statcast provides the
+columns needed for this directly (`n_priorpa_thisgame_player_at_bat` for the
+batter side, `n_thruorder_pitcher` for the pitcher side) -- see
+`mlbtool.metrics.filter_first_pa`.
+
+Pass `--pa-mode all` to restore the original behavior (every PA blended
+together, larger samples, matches a market that resolves on any/every PA
+that batter has against that pitcher). BvP history always uses the
+unfiltered, full history regardless of mode -- those samples are already so
+small (often 0-15 PA) that narrowing further would leave nothing to work
+with.
+
 ## Tracking real hit rates over time
 
 Every `predict_game.py` run automatically appends its recommended picks to
