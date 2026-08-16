@@ -27,6 +27,18 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
    lineup from that team's most recent completed game and labels it
    *projected, not confirmed* in the output — always check the real lineup
    before betting since bench/rest days do happen.
+1.5. **Opener/bulk-arm check** — before pulling any Statcast data, each
+   probable pitcher's last 5 appearances are checked for whether he actually
+   faced the leadoff batter for his team that day (checking both halves of
+   the 1st inning, since the home team's pitcher opens the top and the away
+   team's opens the bottom). If fewer than half of his recent outings were
+   true starts, the report prints a loud warning -- this pitcher is likely
+   a bulk/opener-follower arm, and the lineup slots he's matched against may
+   not reflect who those batters actually face. This exact pattern (a team's
+   "probable starter" actually throwing 1 inning before a bulk reliever takes
+   over) has shown up multiple times in testing and silently invalidates
+   picks tied to that pitcher if not caught. See `check_pitcher_role` in
+   `mlbtool/statsapi_client.py`.
 2. **Statcast pull** — `pybaseball.statcast_pitcher` / `statcast_batter` for
    both probable starters and every batter in both lineups, current season +
    prior 2 seasons ("3yr" throughout, not full career — see *Design choices*

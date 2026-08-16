@@ -80,6 +80,15 @@ def main():
     pitcher2 = sc.lookup_player(args.pitcher2)
     print(f"  {pitcher1.name} throws {pitcher1.throws} | {pitcher2.name} throws {pitcher2.throws}")
 
+    print("Checking both pitchers actually pitch like starters (not openers/bulk arms) ...")
+    for p in (pitcher1, pitcher2):
+        role = sc.check_pitcher_role(p, args.date)
+        if role.warning:
+            print(f"  ⚠️  WARNING: {role.warning}")
+        elif role.recent_total:
+            print(f"  {p.name}: started {role.recent_starts}/{role.recent_total} of his last "
+                  f"{role.recent_total} appearances -- looks like a normal starter.")
+
     print("Fetching lineups (confirmed if posted, else most recent lineup used) ...")
     lineup1, conf1, fallback1_date = sc.get_lineup(game.game_pk, team1_id, team1_side, args.date)
     lineup2, conf2, fallback2_date = sc.get_lineup(game.game_pk, team2_id, team2_side, args.date)

@@ -241,6 +241,97 @@ def get_fallback_lineup(team_id: int, before_date: str) -> tuple[list[LineupSlot
     return lineup, last["date"]
 
 
+def get_recent_appearances(player_id: int, season: int, n: int = 5) -> list[dict]:
+    """Last n pitching game-log entries (date, gamePk, innings pitched), most recent last."""
+
+    def fetch():
+        data = _get(
+            f"{BASE}/people/{player_id}/stats",
+            {"stats": "gameLog", "group": "pitching", "season": season},
+        )
+        splits = data.get("stats", [{}])[0].get("splits", [])
+        return {
+            "splits": [
+                {"date": s["date"], "gamePk": s["game"]["gamePk"], "ip": s["stat"].get("inningsPitched")}
+                for s in splits
+            ]
+        }
+
+    key = f"pitcher_gamelog_{player_id}_{season}"
+    data = cache.json_cache(key, ttl_minutes=60 * 6, fetch=fetch)
+    return data["splits"][-n:]
+
+
+def _faced_leadoff_batter(game_pk: int, pitcher_id: int) -> Optional[bool]:
+    """Did this pitcher throw the very first pitch of the 1st inning for his side --
+    i.e. was he the true starter that day, not a bulk arm following an opener (or a
+    reliever entering mid-game)? Checks both halves of the 1st, since the away
+    team's starter opens the top and the home team's starter opens the bottom --
+    only ever checking the top (as an earlier version of this did) would falsely
+    flag every home-team starter. Past games never change, so this is cached
+    essentially permanently."""
+
+    def fetch():
+        data = _get(f"{BASE_1_1}/game/{game_pk}/feed/live", {})
+        plays = data.get("liveData", {}).get("plays", {}).get("allPlays", [])
+        first_inning = [p for p in plays if p["about"]["inning"] == 1]
+        if not first_inning:
+            return {"faced": None}
+        starter_ids = set()
+        for half in ("top", "bottom"):
+            half_plays = [p for p in first_inning if p["about"]["halfInning"] == half]
+            if half_plays:
+                starter_ids.add(half_plays[0]["matchup"]["pitcher"]["id"])
+        return {"faced": pitcher_id in starter_ids}
+
+    key = f"leadoff_check_{game_pk}_{pitcher_id}"
+    data = cache.json_cache(key, ttl_minutes=60 * 24 * 365, fetch=fetch)
+    return data["faced"]
+
+
+@dataclass
+class PitcherRoleCheck:
+    is_flagged: bool
+    recent_starts: int
+    recent_total: int
+    warning: Optional[str]
+
+
+def check_pitcher_role(player: Player, as_of_date: str, n: int = 5) -> PitcherRoleCheck:
+    """
+    Sanity-check that a 'probable starter' actually pitches like one. Looks at the
+    pitcher's last n appearances and checks how many he actually opened (faced the
+    game's first batter). If fewer than half did, he's being used as a bulk/opener-
+    follower arm rather than a traditional starter -- exactly the pattern that made
+    tonight's Bieber, Fisher, and Peralta matchups unreliable. This doesn't block
+    anything, it just surfaces the same red flag we've been finding by hand.
+    """
+    season = int(as_of_date[:4])
+    recent = get_recent_appearances(player.id, season, n=n)
+    if not recent:
+        return PitcherRoleCheck(False, 0, 0, None)
+
+    started_flags = [
+        f for f in (_faced_leadoff_batter(a["gamePk"], player.id) for a in recent) if f is not None
+    ]
+    if not started_flags:
+        return PitcherRoleCheck(False, 0, 0, None)
+
+    starts = sum(started_flags)
+    total = len(started_flags)
+    is_flagged = (starts / total) < 0.5
+    warning = None
+    if is_flagged:
+        warning = (
+            f"{player.name} started only {starts}/{total} of his last {total} appearances "
+            f"(faced the game's leadoff batter) -- he looks like a bulk/opener-follower arm, "
+            f"not a traditional starter. The lineup slots he's matched against below may not "
+            f"reflect who these batters actually face tonight. Verify who's on the mound live "
+            f"before trusting these picks."
+        )
+    return PitcherRoleCheck(is_flagged, starts, total, warning)
+
+
 def get_lineup(game_pk: int, team_id: int, side: str, date: str) -> tuple[list[LineupSlot], bool, Optional[str]]:
     """
     Returns (lineup, is_confirmed, fallback_source_date).
