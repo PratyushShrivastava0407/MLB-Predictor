@@ -31,6 +31,7 @@ from mlbtool import statcast_data as sd
 from mlbtool import metrics as mx
 from mlbtool import model as mdl
 from mlbtool import formatting as fmt
+from mlbtool import results_log
 
 
 def parse_args():
@@ -41,6 +42,8 @@ def parse_args():
     p.add_argument("--pitcher1", required=True, help="Probable starter for team1")
     p.add_argument("--pitcher2", required=True, help="Probable starter for team2")
     p.add_argument("--workers", type=int, default=6, help="Parallel data-pull threads (default 6)")
+    p.add_argument("--no-log", action="store_true",
+                    help="Don't append recommended picks to results/predictions_log.jsonl")
     return p.parse_args()
 
 
@@ -216,6 +219,11 @@ def print_report(args, game, results, league_p0):
     print("=" * W)
 
     qualifying = [(r, b) for r, b in results if mdl.clears_meaningful_edge(r.edge, r.confidence)]
+
+    if not getattr(args, "no_log", False):
+        n_logged = results_log.log_picks(game.game_pk, args.date, args.team1.upper(), args.team2.upper(), qualifying)
+        if n_logged:
+            print(f"\n(logged {n_logged} pick(s) to results/predictions_log.jsonl for later resolution)")
 
     if not qualifying:
         print(f"\nNo batter in this game clears a meaningful edge over the {mdl.BREAKEVEN*100:.1f}% breakeven.")

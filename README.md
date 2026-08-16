@@ -104,6 +104,26 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
   thousands of PA per player, and matchup-specific (BvP) samples are almost
   always too small to lean on alone.
 
+## Tracking real hit rates over time
+
+Every `predict_game.py` run automatically appends its recommended picks to
+`results/predictions_log.jsonl` (local only, not committed -- see
+`.gitignore`; pass `--no-log` to skip). Once games go Final, run:
+
+```
+python resolve_results.py --summary
+```
+
+This pulls each logged game's actual play-by-play, finds the logged batter's
+PA(s) against the logged pitcher specifically, and records both the outcome
+of their **first** PA that game and **every** PA they had against that
+pitcher (a market might resolve on either framing -- see the WSH@NYM
+conversation in this project's history for why that distinction matters).
+The `--summary` flag then prints hit rates broken out by confidence tier, so
+you can check whether "High confidence" picks are actually hitting near
+their predicted rate over enough samples to mean something -- rather than
+reacting to any single night's results, good or bad.
+
 ## Project layout
 
 ```
