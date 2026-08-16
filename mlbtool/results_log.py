@@ -25,7 +25,7 @@ LOG_PATH = RESULTS_DIR / "predictions_log.jsonl"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def log_picks(game_pk: int, game_date: str, team1: str, team2: str, results: list, pa_mode: str = "all") -> int:
+def log_picks(game_pk: int, game_date: str, team1: str, team2: str, results: list, pa_slot: str = "all") -> int:
     """results: list of (MatchupResult, bullets) tuples already filtered to the
     ones actually recommended. Returns how many were logged."""
     if not results:
@@ -40,7 +40,7 @@ def log_picks(game_pk: int, game_date: str, team1: str, team2: str, results: lis
                 "game_pk": game_pk,
                 "team1": team1,
                 "team2": team2,
-                "pa_mode": pa_mode,
+                "pa_slot": pa_slot,
                 "batter_name": r.batter_name,
                 "batter_id": r.batter_id,
                 "batter_team": r.team_abbr,
@@ -55,6 +55,8 @@ def log_picks(game_pk: int, game_date: str, team1: str, team2: str, results: lis
                 "actual_all_pa_pitches": None,
                 "actual_all_pa_over_count": None,
                 "actual_all_pa_total": None,
+                "actual_slot_pitches": None,
+                "actual_slot_over": None,
             }
             f.write(json.dumps(entry) + "\n")
             n += 1

@@ -88,27 +88,38 @@ def build_pa_table(pitch_df: pd.DataFrame) -> pd.DataFrame:
     return pa
 
 
-def filter_first_pa(pitch_df: pd.DataFrame, pa: pd.DataFrame, role: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+PA_SLOTS = ("1", "2", "3", "4+", "all")
+
+
+def filter_by_pa_slot(pitch_df: pd.DataFrame, pa: pd.DataFrame, role: str, pa_slot: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Restrict to the 'first time through' regime: for a batter, their first PA of
-    each game; for a pitcher, PAs against his first time through the lineup that
-    game. These aren't quite the same slice (a pitcher's first-time-through-order
-    window covers ~3-4 batters, a batter's first-PA window is exactly 1 PA/game),
-    but each isolates the same real effect from its own side of the matchup --
-    performance in the 1st, 2nd, 3rd meeting of a game differs (the well-documented
-    "times through the order" effect), and blending all of it together, as the
-    'all PA' mode does, mixes regimes that don't behave identically.
+    Restrict to a specific times-through-the-order slot: for a batter, their Nth
+    PA of the game; for a pitcher, his Nth time through the lineup. These aren't
+    quite the same slice (a pitcher's "time through the order" window covers
+    ~3-4 batters, a batter's "Nth PA" window is exactly 1 PA/game), but each
+    isolates the same real effect from its own side of the matchup -- performance
+    in the 1st, 2nd, 3rd meeting of a game differs (the well-documented "times
+    through the order" effect), and a live market prices whichever specific PA
+    is coming up next, not some blend across the whole game.
+
+    pa_slot: '1', '2', '3', '4+' (4th or later, bucketed together since sample
+    size gets thin one at a time beyond the 3rd trip), or 'all' (no filtering --
+    the tool's original behavior, blending every PA together).
     """
-    if pa.empty:
+    if pa_slot == "all" or pa.empty:
         return pitch_df, pa
-    if role == "batter":
-        if "pa_num_this_game" not in pa.columns:
-            return pitch_df, pa  # column unavailable -- fall back to unfiltered
-        keep = pa[pa["pa_num_this_game"] == 1]
+
+    col = "pa_num_this_game" if role == "batter" else "times_thru_order"
+    if col not in pa.columns:
+        return pitch_df, pa  # column unavailable (older/incomplete pull) -- fall back to unfiltered
+
+    if pa_slot == "4+":
+        keep = pa[pa[col] >= 4]
+    elif pa_slot in ("1", "2", "3"):
+        keep = pa[pa[col] == int(pa_slot)]
     else:
-        if "times_thru_order" not in pa.columns:
-            return pitch_df, pa
-        keep = pa[pa["times_thru_order"] == 1]
+        raise ValueError(f"Unknown pa_slot '{pa_slot}', expected one of {PA_SLOTS}")
+
     keep_keys = set(zip(keep["game_pk"], keep["at_bat_number"]))
     pitch_index = pd.MultiIndex.from_arrays([pitch_df["game_pk"], pitch_df["at_bat_number"]])
     pitch_keep = pitch_df[pitch_index.isin(keep_keys)]

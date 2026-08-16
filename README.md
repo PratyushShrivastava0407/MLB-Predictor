@@ -104,25 +104,40 @@ local `cache/` folder instead — deleting `cache/` forces a fresh pull.
   thousands of PA per player, and matchup-specific (BvP) samples are almost
   always too small to lean on alone.
 
-## Times-through-the-order (`--pa-mode`)
+## Times-through-the-order (`--pa-slot`)
 
-By default (`--pa-mode first`), every stat in this tool is computed only from
-a batter's **first PA of the game** and a pitcher's **first time through the
-lineup** -- not blended with 2nd/3rd/4th-trip PAs. This matters because of
-the well-documented times-through-the-order effect (hitters and pitchers
-behave differently the more times they face each other in one game), and
-because most single-PA pitch-count props resolve on a batter's first look at
-the pitcher, not some blend across the whole game. Statcast provides the
-columns needed for this directly (`n_priorpa_thisgame_player_at_bat` for the
-batter side, `n_thruorder_pitcher` for the pitcher side) -- see
-`mlbtool.metrics.filter_first_pa`.
+Every stat in this tool can be conditioned on a specific times-through-the-
+order slot instead of blending a batter's/pitcher's whole game together.
+This matters for two reasons: the well-documented times-through-the-order
+effect (hitters and pitchers behave differently the more times they face
+each other in one game), and -- more importantly if your book only offers
+this market **live** -- a live line is priced on one *specific* upcoming PA,
+not some blend across the whole game. If a batter is leading off the 4th
+inning, that's probably his 2nd PA of the day, and pricing it off his
+first-PA-only stats (or a game-wide blend) would answer the wrong question.
 
-Pass `--pa-mode all` to restore the original behavior (every PA blended
-together, larger samples, matches a market that resolves on any/every PA
-that batter has against that pitcher). BvP history always uses the
-unfiltered, full history regardless of mode -- those samples are already so
-small (often 0-15 PA) that narrowing further would leave nothing to work
-with.
+`--pa-slot`, default `'1'`:
+  - `'1'` (default) -- batter's 1st PA of the game / pitcher's 1st time through the order
+  - `'2'` / `'3'` -- that specific trip
+  - `'4+'` -- 4th trip or later, bucketed together for sample size
+  - `'all'` -- every PA blended together (the tool's original behavior)
+
+**Match this to whatever your market is actually pricing.** For a live book,
+that means knowing, at the moment you check a line, which numbered PA that
+batter is on today -- the same way you'd check a live box score. Statcast
+provides the columns needed for this directly
+(`n_priorpa_thisgame_player_at_bat` for the batter side, `n_thruorder_pitcher`
+for the pitcher side) -- see `mlbtool.metrics.filter_by_pa_slot`.
+
+BvP history always uses the unfiltered, full history regardless of slot --
+those samples are already so small (often 0-15 PA) that narrowing further
+would leave nothing to work with.
+
+The results log records which `pa_slot` produced each pick, and
+`resolve_results.py` checks outcomes against the *specific* PA that matches
+that slot (a batter's actual 2nd PA that game, not just his first meeting
+with that pitcher) -- see `actual_slot_pitches`/`actual_slot_over` in the log
+schema.
 
 ## Tracking real hit rates over time
 
